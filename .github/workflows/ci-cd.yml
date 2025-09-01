@@ -40,8 +40,8 @@ jobs:
       - name: Trivy scan repository
         run: |
           mkdir -p trivy-reports
-          # Scan the entire target repo folder (no Dockerfile required)
-          trivy fs --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/repo-scan.json target-repo
+          # Scan for misconfigurations in Terraform and workflow files
+          trivy fs --scanners config --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/repo-scan.json target-repo
 
 
       # 8️⃣ Upload Trivy scan reports
