@@ -1,16 +1,31 @@
-name: Repo Security Scan
+name: Trivy Scan Another Repo
 
 on:
   workflow_dispatch:
+    inputs:
+      repo-to-scan:
+        description: 'GitHub repo to scan (format: username/repo)'
+        required: true
+        default: 'myusername/other-repo'
 
 jobs:
   scan:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # 1️⃣ Checkout this repo (optional, for workflow context)
+      - name: Checkout workflow repo
         uses: actions/checkout@v4
 
+      # 2️⃣ Checkout target repo to scan
+      - name: Checkout target repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.inputs.repo-to-scan }}
+          token: ${{ secrets.GH_PAT }}      # PAT required if repo is private
+          path: target-repo                 # checkout to this folder
+
+      # 3️⃣ Install Trivy
       - name: Install Trivy
         run: |
           sudo apt-get update
@@ -20,11 +35,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y trivy
 
-      - name: Scan GitHub repo with Trivy
+      # 4️⃣ Run Trivy scan on the target repo
+      - name: Scan target repo with Trivy
         run: |
           mkdir -p trivy-reports
-          trivy fs --severity HIGH,CRITICAL --exit-code 0 --format table -o trivy-reports/report.txt .
+          trivy fs --severity HIGH,CRITICAL --exit-code 0 --format table -o trivy-reports/report.txt target-repo
 
+      # 5️⃣ Upload scan report
       - name: Upload Trivy report
         uses: actions/upload-artifact@v4
         with:
