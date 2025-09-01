@@ -1,4 +1,4 @@
-name: Trivy Scan Another Repo
+name: Trivy Scan Repo & Docker Image
 
 on:
   workflow_dispatch:
@@ -13,19 +13,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout this repo (optional, for workflow context)
+      # 1️⃣ Checkout workflow repo (optional)
       - name: Checkout workflow repo
         uses: actions/checkout@v4
 
-      # 2️⃣ Checkout target repo to scan
+      # 2️⃣ Checkout target repo
       - name: Checkout target repo
         uses: actions/checkout@v4
         with:
           repository: ${{ github.event.inputs.repo-to-scan }}
-          token: ${{ secrets.GH_PAT }}      # PAT required if repo is private
-          path: target-repo                 # checkout to this folder
+          token: ${{ secrets.GH_PAT }}      # Required if private repo
+          path: target-repo                 # Checked out to this folder
 
-      # 3️⃣ Install Trivy
+      # 3️⃣ Install Docker (for image build)
+      - name: Set up Docker
+        uses: docker/setup-buildx-action@v3
+
+      # 4️⃣ Build Docker image
+      - name: Build Docker image
+        run: |
+          IMAGE_NAME=my-app:${{ github.sha }}
+          docker build -t $IMAGE_NAME target-repo
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+      # 5️⃣ Install Trivy
       - name: Install Trivy
         run: |
           sudo apt-get update
@@ -35,14 +46,19 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y trivy
 
-      # 4️⃣ Run Trivy scan on the target repo
-      - name: Scan target repo with Trivy
+      # 6️⃣ Scan repo (filesystem scan)
+      - name: Trivy scan repository
         run: |
           mkdir -p trivy-reports
-          trivy fs --severity HIGH,CRITICAL --exit-code 0 --format table -o trivy-reports/report.txt target-repo
+          trivy fs --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/repo-scan.json target-repo
 
-      # 5️⃣ Upload scan report
-      - name: Upload Trivy report
+      # 7️⃣ Scan Docker image
+      - name: Trivy scan Docker image
+        run: |
+          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/image-scan.json $IMAGE_NAME
+
+      # 8️⃣ Upload Trivy scan reports
+      - name: Upload Trivy reports
         uses: actions/upload-artifact@v4
         with:
           name: trivy-reports
