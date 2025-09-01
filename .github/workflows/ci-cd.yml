@@ -1,25 +1,16 @@
-name: CI with Trivy Scan
+name: Repo Security Scan
 
 on:
-  workflow_dispatch:   # 👈 Run manually from GitHub Actions tab
+  workflow_dispatch:
 
 jobs:
-  build:
+  scan:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout repository
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2️⃣ Build Docker image
-      - name: Build Docker image
-        run: |
-          IMAGE_NAME=my-app:${{ github.sha }}
-          docker build -t $IMAGE_NAME .
-          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
-
-      # 3️⃣ Install Trivy
       - name: Install Trivy
         run: |
           sudo apt-get update
@@ -29,14 +20,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y trivy
 
-      # 4️⃣ Scan Docker image
-      - name: Run Trivy scan
+      - name: Scan GitHub repo with Trivy
         run: |
           mkdir -p trivy-reports
-          trivy image --severity HIGH,CRITICAL --exit-code 0 --format table -o trivy-reports/report.txt $IMAGE_NAME
+          trivy fs --severity HIGH,CRITICAL --exit-code 0 --format table -o trivy-reports/report.txt .
 
-      # 5️⃣ Upload Trivy scan report
-      - name: Upload Trivy report artifacts
+      - name: Upload Trivy report
         uses: actions/upload-artifact@v4
         with:
           name: trivy-reports
