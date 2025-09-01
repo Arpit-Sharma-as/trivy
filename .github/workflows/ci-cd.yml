@@ -25,16 +25,6 @@ jobs:
           token: ${{ secrets.GH_PAT }}      # Required if private repo
           path: target-repo                 # Checked out to this folder
 
-      # 3️⃣ Install Docker (for image build)
-      - name: Set up Docker
-        uses: docker/setup-buildx-action@v3
-
-      # 4️⃣ Build Docker image
-      - name: Build Docker image
-        run: |
-          IMAGE_NAME=my-app:${{ github.sha }}
-          docker build -t $IMAGE_NAME target-repo
-          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
 
       # 5️⃣ Install Trivy
       - name: Install Trivy
@@ -53,10 +43,6 @@ jobs:
             # Scan the entire target repo folder (no Dockerfile required)
             trivy fs --severity HIGH,CRITICAL --exit-code 0 --format table -o trivy-reports/report.txt target-repo
 
-      # 7️⃣ Scan Docker image
-      - name: Trivy scan Docker image
-        run: |
-          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/image-scan.json $IMAGE_NAME
 
       # 8️⃣ Upload Trivy scan reports
       - name: Upload Trivy reports
