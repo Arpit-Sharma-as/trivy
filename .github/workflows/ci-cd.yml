@@ -50,7 +50,8 @@ jobs:
       - name: Trivy scan repository
         run: |
           mkdir -p trivy-reports
-          trivy fs --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/repo-scan.json target-repo
+            # Scan the entire target repo folder (no Dockerfile required)
+            trivy fs --severity HIGH,CRITICAL --exit-code 0 --format table -o trivy-reports/report.txt target-repo
 
       # 7️⃣ Scan Docker image
       - name: Trivy scan Docker image
