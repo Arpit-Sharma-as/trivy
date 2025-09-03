@@ -25,6 +25,28 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # Validate inputs
+      - name: Validate workflow inputs
+        run: |
+          if [[ "${{ github.event.inputs.scan_type }}" == "dockerfile" ]]; then
+            if [[ -z "${{ github.event.inputs.dockerfile_path }}" ]]; then
+              echo "Error: You must provide a Dockerfile path when scan_type is 'dockerfile'." >&2
+              exit 1
+            fi
+            if [[ -n "${{ github.event.inputs.image_url }}" ]]; then
+              echo "Error: Do not provide an image URL when scan_type is 'dockerfile'." >&2
+              exit 1
+            fi
+          elif [[ "${{ github.event.inputs.scan_type }}" == "image" ]]; then
+            if [[ -z "${{ github.event.inputs.image_url }}" ]]; then
+              echo "Error: You must provide an image URL when scan_type is 'image'." >&2
+              exit 1
+            fi
+            if [[ -n "${{ github.event.inputs.dockerfile_path }}" && "${{ github.event.inputs.dockerfile_path }}" != "./Dockerfile" ]]; then
+              echo "Error: Do not provide a Dockerfile path when scan_type is 'image'." >&2
+              exit 1
+            fi
+          fi
       # Checkout repo only if Dockerfile path is used
       - name: Checkout repository
         if: ${{ github.event.inputs.scan_type == 'dockerfile' }}
