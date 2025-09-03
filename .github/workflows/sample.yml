@@ -1,0 +1,64 @@
+name: Flexible Trivy Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: "Choose what to scan (dockerfile or image)"
+        required: true
+        default: "dockerfile"
+        type: choice
+        options:
+          - dockerfile
+          - image
+      dockerfile_path:
+        description: "Path to Dockerfile (used if scan_type=dockerfile)"
+        required: false
+        default: "./Dockerfile"
+      image_url:
+        description: "Remote image URL (used if scan_type=image, e.g., nginx:latest or username/app:tag)"
+        required: false
+        default: ""
+
+jobs:
+  trivy-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout repo only if Dockerfile path is used
+      - name: Checkout repository
+        if: ${{ github.event.inputs.scan_type == 'dockerfile' }}
+        uses: actions/checkout@v4
+
+      # Install Trivy
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+          echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update
+          sudo apt-get install -y trivy
+
+      # Build Docker image and scan
+      - name: Build & Scan Dockerfile
+        if: ${{ github.event.inputs.scan_type == 'dockerfile' }}
+        run: |
+          IMAGE_NAME=my-local-app:${{ github.sha }}
+          docker build -t $IMAGE_NAME -f "${{ github.event.inputs.dockerfile_path }}" .
+          mkdir -p trivy-reports
+          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/dockerfile-report.json $IMAGE_NAME
+
+      # Scan remote image
+      - name: Scan Remote Image
+        if: ${{ github.event.inputs.scan_type == 'image' }}
+        run: |
+          mkdir -p trivy-reports
+          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/remote-image-report.json "${{ github.event.inputs.image_url }}"
+
+      # Upload report
+      - name: Upload Trivy report artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: trivy-reports/
