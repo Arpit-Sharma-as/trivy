@@ -42,7 +42,7 @@ jobs:
               echo "Error: You must provide an image URL when scan_type is 'image'." >&2
               exit 1
             fi
-            if [[ -n "${{ github.event.inputs.dockerfile_path }}" && "${{ github.event.inputs.dockerfile_path }}" != "./Dockerfile" ]]; then
+            if [[ "${{ github.event.inputs.dockerfile_path }}" != "./Dockerfile" ]]; then
               echo "Error: Do not provide a Dockerfile path when scan_type is 'image'." >&2
               exit 1
             fi
