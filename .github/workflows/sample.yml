@@ -47,6 +47,7 @@ jobs:
               exit 1
             fi
           fi
+
       # Checkout repo only if Dockerfile path is used
       - name: Checkout repository
         if: ${{ github.event.inputs.scan_type == 'dockerfile' }}
@@ -61,6 +62,14 @@ jobs:
           echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
           sudo apt-get update
           sudo apt-get install -y trivy
+
+      # 🔑 Login to DockerHub (only for remote image scan, optional if private)
+      - name: DockerHub Login
+        if: ${{ github.event.inputs.scan_type == 'image' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Build Docker image and scan
       - name: Build & Scan Dockerfile
