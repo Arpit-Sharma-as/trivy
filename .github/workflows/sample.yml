@@ -78,18 +78,29 @@ jobs:
           IMAGE_NAME=my-local-app:${{ github.sha }}
           docker build -t $IMAGE_NAME -f "${{ github.event.inputs.dockerfile_path }}" .
           mkdir -p trivy-reports
-          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/dockerfile-report.json $IMAGE_NAME
+          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/trivy-report.json $IMAGE_NAME
 
       # Scan remote image
       - name: Scan Remote Image
         if: ${{ github.event.inputs.scan_type == 'image' }}
         run: |
           mkdir -p trivy-reports
-          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/remote-image-report.json "${{ github.event.inputs.image_url }}"
+          trivy image --severity HIGH,CRITICAL --exit-code 0 --format json -o trivy-reports/trivy-report.json "${{ github.event.inputs.image_url }}"
 
-      # Upload report
+      # Upload report as artifact
       - name: Upload Trivy report artifacts
         uses: actions/upload-artifact@v4
         with:
           name: trivy-reports
           path: trivy-reports/
+
+      # 📤 Upload Trivy report to DefectDojo
+      - name: Upload Trivy report to DefectDojo
+        run: |
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+            -F "file=@trivy-reports/trivy-report.json;type=application/json" \
+            -F "scan_type=Trivy Scan" \
+            -F "engagement_name=trivy" \
+            -F "product_name=MyProduct" \
+            -F "auto_create_context=true"
