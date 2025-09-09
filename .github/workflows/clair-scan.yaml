@@ -30,9 +30,9 @@ jobs:
         run: |
           git clone https://github.com/quay/clair.git
           cd clair
-          docker compose -f local-dev/docker-compose.yaml up -d
-          # wait for Clair API to be ready
+          docker compose -f docker-compose.yaml up -d
           sleep 60
+
 
 
       - name: Scan image with Clair
