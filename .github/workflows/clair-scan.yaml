@@ -31,9 +31,19 @@ jobs:
           git clone https://github.com/quay/clair.git
           cd clair
           docker compose -f docker-compose.yaml up -d
-          sleep 60
 
-
+      - name: Wait for Clair API
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:6060/ > /dev/null; then
+              echo "✅ Clair is ready!"
+              exit 0
+            fi
+            echo "⏳ Waiting for Clair..."
+            sleep 20
+          done
+          echo "❌ Clair did not start in time" >&2
+          exit 1
 
       - name: Scan image with Clair
         run: |
