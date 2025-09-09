@@ -47,18 +47,18 @@ jobs:
           echo "❌ Clair API did not become ready in time" >&2
           exit 1
 
-      - name: Wait for Clair health (matcher+indexer)
+      - name: Wait for Clair health
         run: |
           for i in {1..40}; do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/health)
             if [[ "$code" == "200" ]]; then
-              echo "✅ Clair services (matcher + indexer) are healthy!"
+              echo "✅ Clair services are healthy!"
               exit 0
             fi
             echo "⏳ Waiting for Clair health... (status: $code)"
             sleep 15
           done
-          echo "❌ Clair services did not become healthy in time" >&2
+          echo "❌ Clair did not become healthy in time" >&2
           exit 1
 
       - name: Scan image with Clair
