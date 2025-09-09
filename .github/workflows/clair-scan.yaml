@@ -33,20 +33,32 @@ jobs:
           docker compose -f docker-compose.yaml up -d
 
 
-      - name: Wait for Clair services
+      - name: Wait for Clair API
         run: |
           for i in {1..40}; do
-            api=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/)
-            matcher=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/health/matcher)
-            indexer=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/health/indexer)
-            if [[ "$api" == "200" && "$matcher" == "200" && "$indexer" == "200" ]]; then
-              echo "✅ Clair API, matcher, and indexer are ready!"
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/)
+            if [[ "$code" == "200" ]]; then
+              echo "✅ Clair API is up!"
               exit 0
             fi
-            echo "⏳ Waiting for Clair services... (API: $api, Matcher: $matcher, Indexer: $indexer)"
-            sleep 20
+            echo "⏳ Waiting for Clair API... (status: $code)"
+            sleep 15
           done
-          echo "❌ Clair services did not start in time" >&2
+          echo "❌ Clair API did not become ready in time" >&2
+          exit 1
+
+      - name: Wait for Clair health (matcher+indexer)
+        run: |
+          for i in {1..40}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/health)
+            if [[ "$code" == "200" ]]; then
+              echo "✅ Clair services (matcher + indexer) are healthy!"
+              exit 0
+            fi
+            echo "⏳ Waiting for Clair health... (status: $code)"
+            sleep 15
+          done
+          echo "❌ Clair services did not become healthy in time" >&2
           exit 1
 
       - name: Scan image with Clair
