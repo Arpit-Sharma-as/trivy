@@ -61,7 +61,6 @@ jobs:
       - name: Scan image with Clair
         run: |
           clairctl report \
-            --config clair/local-dev/clair/config.yaml \
             --host http://localhost:6060 \
             -o json ${{ github.event.inputs.image }} \
             > clair-report.json
