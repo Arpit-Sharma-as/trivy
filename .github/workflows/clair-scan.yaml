@@ -36,18 +36,32 @@ jobs:
         run: |
           for i in {1..30}; do
             if curl -s http://localhost:6060/ > /dev/null; then
-              echo "✅ Clair is ready!"
+              echo "✅ Clair API is ready!"
               exit 0
             fi
-            echo "⏳ Waiting for Clair..."
+            echo "⏳ Waiting for Clair API..."
             sleep 20
           done
-          echo "❌ Clair did not start in time" >&2
+          echo "❌ Clair API did not start in time" >&2
+          exit 1
+
+      - name: Wait for Matcher service
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:6060/health/matcher > /dev/null; then
+              echo "✅ Matcher is ready!"
+              exit 0
+            fi
+            echo "⏳ Waiting for Matcher..."
+            sleep 20
+          done
+          echo "❌ Matcher not ready in time" >&2
           exit 1
 
       - name: Scan image with Clair
         run: |
           clairctl report \
+            --config clair/local-dev/clair/config.yaml \
             --host http://localhost:6060 \
             -o json ${{ github.event.inputs.image }} \
             > clair-report.json
