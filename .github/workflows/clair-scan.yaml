@@ -1,4 +1,4 @@
-name: Clair Image Scan
+name: Minimal Clair Image Scan
 
 on:
   workflow_dispatch:
@@ -13,48 +13,32 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-          cache: false
-
-      - name: Install clairctl
-        run: |
-          go install github.com/quay/clair/v4/cmd/clairctl@latest
-          echo "$HOME/go/bin" >> $GITHUB_PATH
-
-      - name: Start Clair (combo mode with Postgres)
+      - name: Start Clair in combo mode
         run: |
           git clone https://github.com/quay/clair.git
           cd clair
-          sed -i 's/- "6060"/- "6060:6060"/' docker-compose.yaml
-          sed -i 's/- "6061"/- "6061:6061"/' docker-compose.yaml
           docker compose -f docker-compose.yaml up -d
 
-
-
-      - name: Wait for Clair health
+      - name: Wait for Clair API
         run: |
-          for i in {1..40}; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/healthz)
-            if [[ "$code" == "200" ]]; then
-              echo "✅ Clair is healthy!"
+          for i in {1..30}; do
+            if curl -s http://localhost:6060/ > /dev/null; then
+              echo "✅ Clair API is ready!"
               exit 0
             fi
-            echo "⏳ Waiting for Clair health... (status: $code)"
-            sleep 15
+            echo "⏳ Waiting for Clair API..."
+            sleep 10
           done
-          echo "❌ Clair did not become healthy in time" >&2
+          echo "❌ Clair API did not start in time" >&2
           exit 1
 
-      - name: Scan image with Clair
+      - name: Scan image using Clairctl (Dockerized)
         run: |
-          clairctl report \
-            --host http://localhost:6060 \
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            quay/clairctl:latest \
+            report \
+            --host http://host.docker.internal:6060 \
             -o json ${{ github.event.inputs.image }} \
             > clair-report.json
 
