@@ -1,10 +1,18 @@
-name: Minimal Clair Scan
+name: Clair Image Scan
 
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: "Choose scan mode"
+        required: true
+        default: "public"
+        type: choice
+        options:
+          - public   # Scan public image (Docker Hub)
+          - local    # Build & push local/private image to Clair
       image:
-        description: "Docker image to scan (e.g. nginx:1.25)"
+        description: "Docker image to scan (e.g. nginx:1.25) (used only for public mode)"
         required: true
         default: "nginx:latest"
 
@@ -13,16 +21,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up Go & install clairctl
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
 
-      - run: |
+      - name: Install clairctl
+        run: |
           go install github.com/quay/clair/v4/cmd/clairctl@latest
           echo "$HOME/go/bin" >> $GITHUB_PATH
 
-      - name: Start Clair
+      - name: Start Clair (combo mode with Postgres)
         run: |
           git clone https://github.com/quay/clair.git
           cd clair
@@ -35,19 +47,44 @@ jobs:
               echo "✅ Clair API is ready!"
               exit 0
             fi
-            echo "⏳ Waiting..."
-            sleep 10
+            echo "⏳ Waiting for Clair API..."
+            sleep 20
           done
+          echo "❌ Clair API did not start in time" >&2
           exit 1
 
-      - name: Scan Image
+      # 🔹 Mode: Public image
+      - name: Scan Public Image
+        if: ${{ github.event.inputs.mode == 'public' }}
         run: |
           clairctl report \
             --host http://localhost:6060 \
             -o json ${{ github.event.inputs.image }} \
             > clair-report.json
 
-      - name: Upload report
+      # 🔹 Mode: Local/private image
+      - name: Build Local Test Image
+        if: ${{ github.event.inputs.mode == 'local' }}
+        run: |
+          echo -e "FROM alpine:3.19\nRUN apk add curl" > Dockerfile
+          docker build -t localtest:1.0 .
+
+      - name: Push Local Image to Clair
+        if: ${{ github.event.inputs.mode == 'local' }}
+        run: |
+          clairctl push \
+            --host http://localhost:6060 \
+            localtest:1.0
+
+      - name: Scan Local Image
+        if: ${{ github.event.inputs.mode == 'local' }}
+        run: |
+          clairctl report \
+            --host http://localhost:6060 \
+            -o json localtest:1.0 \
+            > clair-report.json
+
+      - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
           name: clair-report
