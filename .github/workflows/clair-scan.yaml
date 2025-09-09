@@ -25,43 +25,44 @@ jobs:
         run: |
           go install github.com/quay/clair/v4/cmd/clairctl@latest
           echo "$HOME/go/bin" >> $GITHUB_PATH
-
       - name: Start Clair (combo mode with Postgres)
         run: |
           git clone https://github.com/quay/clair.git
           cd clair
           docker compose -f docker-compose.yaml up -d
-          docker ps
-
-      - name: Wait for Clair health
+      - name: Wait for Clair API
         run: |
-          echo "⏳ Waiting for Clair to become healthy..."
-          for i in {1..40}; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/health || echo "000")
-            if [[ "$code" == "200" ]]; then
-              echo "✅ Clair services are healthy!"
+          for i in {1..30}; do
+            if curl -s http://localhost:6060/ > /dev/null; then
+              echo "✅ Clair API is ready!"
               exit 0
             fi
-            echo "⏳ Waiting... (status: $code)"
+            echo "⏳ Waiting for Clair API..."
             sleep 20
           done
-          echo "❌ Clair did not become healthy in time" >&2
+          echo "❌ Clair API did not start in time" >&2
           exit 1
-
+      - name: Wait for Matcher service
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:6060/health/matcher > /dev/null; then
+              echo "✅ Matcher is ready!"
+              exit 0
+            fi
+            echo "⏳ Waiting for Matcher..."
+            sleep 20
+          done
+          echo "❌ Matcher not ready in time" >&2
+          exit 1
       - name: Scan image with Clair
         run: |
           clairctl report \
-            --host http://127.0.0.1:8080 \
+            --config clair/local-dev/clair/config.yaml \
+            --host http://localhost:6060 \
             -o json ${{ github.event.inputs.image }} \
             > clair-report.json
-          echo "✅ Scan complete. Report saved to clair-report.json"
-
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
           name: clair-report
           path: clair-report.json
-
-      - name: Show report in logs (optional)
-        run: |
-          cat clair-report.json | jq .
