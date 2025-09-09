@@ -1,4 +1,4 @@
-name: Minimal Clair Image Scan
+name: Minimal Clair Scan
 
 on:
   workflow_dispatch:
@@ -13,7 +13,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Start Clair in combo mode
+      - name: Set up Go & install clairctl
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - run: |
+          go install github.com/quay/clair/v4/cmd/clairctl@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Start Clair
         run: |
           git clone https://github.com/quay/clair.git
           cd clair
@@ -26,23 +35,19 @@ jobs:
               echo "✅ Clair API is ready!"
               exit 0
             fi
-            echo "⏳ Waiting for Clair API..."
+            echo "⏳ Waiting..."
             sleep 10
           done
-          echo "❌ Clair API did not start in time" >&2
           exit 1
 
-      - name: Scan image using Clairctl (Dockerized)
+      - name: Scan Image
         run: |
-          docker run --rm \
-            -v /var/run/docker.sock:/var/run/docker.sock \
-            quay/clairctl:latest \
-            report \
-            --host http://host.docker.internal:6060 \
+          clairctl report \
+            --host http://localhost:6060 \
             -o json ${{ github.event.inputs.image }} \
             > clair-report.json
 
-      - name: Upload report artifact
+      - name: Upload report
         uses: actions/upload-artifact@v4
         with:
           name: clair-report
