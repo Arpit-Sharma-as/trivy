@@ -36,6 +36,7 @@ jobs:
           docker compose -f docker-compose.yaml up -d
 
 
+
       - name: Wait for Clair health
         run: |
           for i in {1..40}; do
