@@ -33,30 +33,18 @@ jobs:
           cd clair
           docker compose -f docker-compose.yaml up -d
 
-      - name: Wait for Clair API
+      - name: Wait for Clair health
         run: |
-          for i in {1..30}; do
-            if curl -s http://localhost:6060/ > /dev/null; then
-              echo "✅ Clair API is ready!"
+          for i in {1..40}; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/health)
+            if [[ "$code" == "200" ]]; then
+              echo "✅ Clair is healthy!"
               exit 0
             fi
-            echo "⏳ Waiting for Clair API..."
-            sleep 20
+            echo "⏳ Waiting for Clair health... (status: $code)"
+            sleep 15
           done
-          echo "❌ Clair API did not start in time" >&2
-          exit 1
-
-      - name: Wait for Matcher service
-        run: |
-          for i in {1..30}; do
-            if curl -s http://localhost:6060/health/matcher > /dev/null; then
-              echo "✅ Matcher is ready!"
-              exit 0
-            fi
-            echo "⏳ Waiting for Matcher..."
-            sleep 20
-          done
-          echo "❌ Matcher not ready in time" >&2
+          echo "❌ Clair did not become healthy in time" >&2
           exit 1
 
       - name: Scan image with Clair
