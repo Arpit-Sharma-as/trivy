@@ -32,21 +32,6 @@ jobs:
           cd clair
           docker compose -f docker-compose.yaml up -d
 
-
-      - name: Wait for Clair API
-        run: |
-          for i in {1..40}; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/)
-            if [[ "$code" == "200" ]]; then
-              echo "✅ Clair API is up!"
-              exit 0
-            fi
-            echo "⏳ Waiting for Clair API... (status: $code)"
-            sleep 15
-          done
-          echo "❌ Clair API did not become ready in time" >&2
-          exit 1
-
       - name: Wait for Clair health
         run: |
           for i in {1..40}; do
