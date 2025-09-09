@@ -1,0 +1,48 @@
+name: Clair Image Scan
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Docker image to scan (e.g. nginx:1.25)"
+        required: true
+        default: "nginx:latest"
+
+jobs:
+  clair-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Install clairctl
+        run: |
+          go install github.com/quay/clair/v4/cmd/clairctl@latest
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+
+      - name: Start Clair (combo mode with Postgres)
+        run: |
+          git clone https://github.com/quay/clair.git
+          cd clair
+          docker compose -f local-dev/docker-compose.yml up -d
+          # wait for Clair API to be ready
+          sleep 60
+
+      - name: Scan image with Clair
+        run: |
+          clairctl report \
+            --host http://localhost:6060 \
+            -o json ${{ github.event.inputs.image }} \
+            > clair-report.json
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clair-report
+          path: clair-report.json
