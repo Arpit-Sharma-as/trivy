@@ -32,18 +32,16 @@ jobs:
           git clone https://github.com/quay/clair.git
           cd clair
           docker compose -f docker-compose.yaml up -d
-          docker ps
 
       - name: Wait for Clair health
         run: |
-          echo "⏳ Waiting for Clair to become healthy..."
           for i in {1..30}; do
             code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/health || echo "000")
             if [[ "$code" == "200" ]]; then
-              echo "✅ Clair services are healthy!"
+              echo "✅ Clair is healthy!"
               exit 0
             fi
-            echo "⏳ Waiting... (status: $code)"
+            echo "⏳ Waiting for Clair... ($code)"
             sleep 20
           done
           echo "❌ Clair did not become healthy in time" >&2
@@ -55,14 +53,9 @@ jobs:
             --host http://127.0.0.1:8080 \
             -o json ${{ github.event.inputs.image }} \
             > clair-report.json
-          echo "✅ Scan complete. Report saved to clair-report.json"
 
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
           name: clair-report
           path: clair-report.json
-
-      - name: Show report in logs (optional)
-        run: |
-          cat clair-report.json | jq .
