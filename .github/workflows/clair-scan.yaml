@@ -1,81 +1,66 @@
-name: Clair Vulnerability Scan
+name: Clair Image Scan
 
 on:
   workflow_dispatch:
     inputs:
-      image-name:
-        description: "Name for the Docker image (e.g., myapp)"
+      image:
+        description: "Docker image to scan (e.g. nginx:1.25)"
         required: true
-        default: "myapp"
-      image-tag:
-        description: "Tag for the Docker image"
-        required: true
-        default: "latest"
+        default: "nginx:latest"
 
 jobs:
-  clair-pipeline:
+  clair-scan:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout source code
-      - name: Checkout repository
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2️⃣ Build Docker image
-      - name: Build Docker image
-        run: |
-          IMAGE=${{ github.event.inputs.image-name }}:${{ github.event.inputs.image-tag }}
-          echo "Building Docker image: $IMAGE"
-          docker build -t $IMAGE .
-
-      # 3️⃣ Install clairctl (client for Clair API)
-      - name: Install clairctl
+      - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - run: |
-          go install github.com/quay/clair/v4/cmd/clairctl@latest
-          echo "$HOME/go/bin" >> $GITHUB_PATH
 
-      # 4️⃣ Start Clair in combo mode (API + Indexer + Matcher + Postgres)
-      - name: Start Clair
+      - name: Install clairctl
+        run: |
+          go install github.com/quay/clair/v4/cmd/clairctl@v4.4.0
+          echo "$HOME/go/bin" >> $GITHUB_PATH
+      - name: Start Clair (combo mode with Postgres)
         run: |
           git clone https://github.com/quay/clair.git
           cd clair
           docker compose -f docker-compose.yaml up -d
-
-      # 5️⃣ Wait for Clair matcher to be ready
-      - name: Wait for Matcher
+      - name: Wait for Clair API
         run: |
-          for i in {1..40}; do
-            if curl -s http://localhost:6060/health/matcher | grep "ok"; then
+          for i in {1..30}; do
+            if curl -s http://localhost:6060/ > /dev/null; then
+              echo "✅ Clair API is ready!"
+              exit 0
+            fi
+            echo "⏳ Waiting for Clair API..."
+            sleep 20
+          done
+          echo "❌ Clair API did not start in time" >&2
+          exit 1
+      - name: Wait for Matcher service
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:6060/health/matcher > /dev/null; then
               echo "✅ Matcher is ready!"
               exit 0
             fi
             echo "⏳ Waiting for Matcher..."
-            sleep 15
+            sleep 20
           done
           echo "❌ Matcher not ready in time" >&2
           exit 1
-
-      # 6️⃣ Push the built image to Clair for indexing
-      - name: Push image to Clair
-        run: |
-          IMAGE=${{ github.event.inputs.image-name }}:${{ github.event.inputs.image-tag }}
-          clairctl push \
-            --host http://localhost:6060 \
-            $IMAGE
-
-      # 7️⃣ Run vulnerability scan
       - name: Scan image with Clair
         run: |
-          IMAGE=${{ github.event.inputs.image-name }}:${{ github.event.inputs.image-tag }}
           clairctl report \
+            --config clair/local-dev/clair/config.yaml \
             --host http://localhost:6060 \
-            -o json $IMAGE \
+            -o json ${{ github.event.inputs.image }} \
             > clair-report.json
-
-      # 8️⃣ Upload scan report
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
