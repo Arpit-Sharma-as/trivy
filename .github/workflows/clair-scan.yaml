@@ -23,44 +23,36 @@ jobs:
 
       - name: Install clairctl
         run: |
-          go install github.com/quay/clair/v4/cmd/clairctl@v4.4.0
+          go install github.com/quay/clair/v4/cmd/clairctl@latest
           echo "$HOME/go/bin" >> $GITHUB_PATH
+
       - name: Start Clair (combo mode with Postgres)
         run: |
           git clone https://github.com/quay/clair.git
           cd clair
           docker compose -f docker-compose.yaml up -d
-      - name: Wait for Clair API
+
+      - name: Wait for Clair Matcher to be ready
         run: |
           for i in {1..30}; do
-            if curl -s http://localhost:6060/ > /dev/null; then
-              echo "✅ Clair API is ready!"
+            STATUS=$(curl -s http://localhost:6060/health | jq -r '.status // empty')
+            if [ "$STATUS" = "ok" ]; then
+              echo "✅ Clair Matcher is ready!"
               exit 0
             fi
-            echo "⏳ Waiting for Clair API..."
-            sleep 20
-          done
-          echo "❌ Clair API did not start in time" >&2
-          exit 1
-      - name: Wait for Matcher service
-        run: |
-          for i in {1..30}; do
-            if curl -s http://localhost:6060/health/matcher > /dev/null; then
-              echo "✅ Matcher is ready!"
-              exit 0
-            fi
-            echo "⏳ Waiting for Matcher..."
-            sleep 20
+            echo "⏳ Waiting for Clair Matcher... ($i/30)"
+            sleep 10
           done
           echo "❌ Matcher not ready in time" >&2
           exit 1
+
       - name: Scan image with Clair
         run: |
           clairctl report \
-            --config clair/local-dev/clair/config.yaml \
             --host http://localhost:6060 \
             -o json ${{ github.event.inputs.image }} \
             > clair-report.json
+
       - name: Upload report artifact
         uses: actions/upload-artifact@v4
         with:
