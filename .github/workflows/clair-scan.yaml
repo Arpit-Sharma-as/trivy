@@ -105,8 +105,11 @@ jobs:
 
       - name: Run Clair scan
         run: |
-          clairctl report -o json --host http://localhost:6060 "${{ github.event.inputs.image }}" > report.json
+          clairctl report -o json --host http://localhost:6060 "${{ github.event.inputs.image }}" > report_raw.json
+          # Pretty-print JSON for readability
+          cat report_raw.json | jq '.' > report.json
           clairctl report -o table --host http://localhost:6060 "${{ github.event.inputs.image }}"
+
 
       - name: Upload Clair Report
         uses: actions/upload-artifact@v4
