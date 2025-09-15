@@ -1,27 +1,58 @@
-name: Clair Security Scan
+name: Flexible Clair Scan
 
 on:
   workflow_dispatch:
     inputs:
-      image:
-        description: "Container image to scan (e.g. nginx:latest)"
+      scan_type:
+        description: "Choose what to scan (dockerfile or image)"
         required: true
-        default: "nginx:latest"
+        default: "dockerfile"
+        type: choice
+        options:
+          - dockerfile
+          - image
+      dockerfile_path:
+        description: "Path to Dockerfile (used if scan_type=dockerfile)"
+        required: false
+        default: "./Dockerfile"
+      image_url:
+        description: "Remote image URL (used if scan_type=image, e.g., nginx:latest or username/app:tag)"
+        required: false
+        default: ""
 
 jobs:
   clair-scan:
     runs-on: ubuntu-latest
 
     steps:
+      # ✅ Validate Inputs
+      - name: Validate workflow inputs
+        run: |
+          if [[ "${{ github.event.inputs.scan_type }}" == "dockerfile" ]]; then
+            if [[ -z "${{ github.event.inputs.dockerfile_path }}" ]]; then
+              echo "Error: You must provide a Dockerfile path when scan_type is 'dockerfile'." >&2
+              exit 1
+            fi
+          elif [[ "${{ github.event.inputs.scan_type }}" == "image" ]]; then
+            if [[ -z "${{ github.event.inputs.image_url }}" ]]; then
+              echo "Error: You must provide an image URL when scan_type is 'image'." >&2
+              exit 1
+            fi
+          fi
+
+      # ✅ Checkout repo (only if Dockerfile build required)
       - name: Checkout repository
+        if: ${{ github.event.inputs.scan_type == 'dockerfile' }}
         uses: actions/checkout@v4
 
-      - name: Set up Docker Compose
+      # ✅ Install prerequisites
+      - name: Install prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y docker-compose jq curl
+          sudo apt-get install -y docker-compose jq curl golang-go
 
-      - name: Prepare Clair setup
+      # ✅ Setup Clair
+      - name: Setup Clair
         run: |
           mkdir -p clair/data
           curl -L -o clair/data/repository-to-cpe.json https://access.redhat.com/security/data/metrics/repository-to-cpe.json
@@ -84,6 +115,7 @@ jobs:
             pgdata:
           EOF
 
+      # ✅ Start Clair
       - name: Start Clair services
         working-directory: clair
         run: |
@@ -97,22 +129,48 @@ jobs:
             sleep 5
           done
 
+      # ✅ Install clairctl
       - name: Install clairctl
         run: |
-          sudo apt-get install -y golang-go
           go install github.com/quay/clair/v4/cmd/clairctl@latest
           echo "${HOME}/go/bin" >> $GITHUB_PATH
 
-      - name: Run Clair scan
+      # ✅ Build image from Dockerfile (if required)
+      - name: Build Docker Image
+        if: ${{ github.event.inputs.scan_type == 'dockerfile' }}
         run: |
-          clairctl report -o json --host http://localhost:6060 "${{ github.event.inputs.image }}" > report_raw.json
-          # Pretty-print JSON for readability
+          IMAGE_NAME=my-local-app:${{ github.sha }}
+          docker build -t $IMAGE_NAME -f "${{ github.event.inputs.dockerfile_path }}" .
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
+      # ✅ Set image name for scan
+      - name: Set Image for Scan
+        run: |
+          if [[ "${{ github.event.inputs.scan_type }}" == "image" ]]; then
+            echo "IMAGE_NAME=${{ github.event.inputs.image_url }}" >> $GITHUB_ENV
+          fi
+
+      # ✅ Run Clair scan
+      - name: Run Clair Scan
+        run: |
+          clairctl report -o json --host http://localhost:6060 "$IMAGE_NAME" > report_raw.json
           cat report_raw.json | jq '.' > report.json
-          clairctl report -o table --host http://localhost:6060 "${{ github.event.inputs.image }}"
+          clairctl report -o table --host http://localhost:6060 "$IMAGE_NAME"
 
-
+      # ✅ Upload report artifact
       - name: Upload Clair Report
         uses: actions/upload-artifact@v4
         with:
           name: clair-report
           path: report.json
+
+      # ✅ Upload Clair Report to DefectDojo
+      - name: Upload Clair report to DefectDojo
+        run: |
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+            -F "file=@report.json;type=application/json" \
+            -F "scan_type=Clair Scan" \
+            -F "engagement_name=clair" \
+            -F "product_name=MyProduct" \
+            -F "auto_create_context=true"
