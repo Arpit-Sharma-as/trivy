@@ -144,22 +144,21 @@ jobs:
           echo "${HOME}/go/bin" >> $GITHUB_PATH
 
 
-      # ✅ Log in to Docker Hub
-      - name: Log in to Docker Hub
+      # 🔑 Login to DockerHub (only for remote image scan, optional if private)
+      - name: DockerHub Login
+        if: ${{ github.event.inputs.scan_type == 'image' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # ✅ Build Docker image and scan (local, no push)
-      - name: Build & Scan Dockerfile
+      # Build Docker image only
+      - name: Build Docker image
         if: ${{ github.event.inputs.scan_type == 'dockerfile' }}
         run: |
           IMAGE_NAME=my-local-app:${{ github.sha }}
           docker build -t $IMAGE_NAME -f "${{ github.event.inputs.dockerfile_path }}" .
-          mkdir -p clair-reports
-          clairctl report -o json --host http://localhost:6060 "$IMAGE_NAME" > clair-reports/clair-report.json
-          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
+
 
       # ✅ Set image name for scan
       - name: Set Image for Scan
