@@ -1,55 +1,115 @@
-name: Clair Image Scan
+name: Clair Security Scan
 
 on:
   workflow_dispatch:
     inputs:
       image:
-        description: "Docker image to scan (e.g. nginx:1.25)"
+        description: "Container image to scan (e.g. nginx:latest)"
         required: true
         default: "nginx:latest"
 
 jobs:
   clair-scan:
     runs-on: ubuntu-latest
-    services:
-      clair:
-        image: quay.io/projectquay/clair:latest
-        ports:
-          - 6060:6060
-          - 6061:6061
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install clairctl (binary)
+      - name: Set up Docker Compose
         run: |
-          curl -L https://github.com/quay/clair/releases/download/v4.7.0/clairctl-linux-amd64 -o clairctl
-          chmod +x clairctl
-          sudo mv clairctl /usr/local/bin/
+          sudo apt-get update
+          sudo apt-get install -y docker-compose jq curl
 
-      - name: Wait for Clair API
+      - name: Prepare Clair setup
         run: |
+          mkdir -p clair/data
+          curl -L -o clair/data/repository-to-cpe.json https://access.redhat.com/security/data/metrics/repository-to-cpe.json
+
+          cat > clair/clair-config.yaml <<'EOF'
+          http_listen_addr: "0.0.0.0:6060"
+          introspection_addr: "0.0.0.0:6061"
+          log_level: "info"
+
+          indexer:
+            connstring: "host=db port=5432 user=clair password=clair dbname=clair sslmode=disable"
+            migrations: true
+            scanner:
+              repo:
+                rhel-repository-scanner:
+                  repo2cpe_mapping_file: /data/repository-to-cpe.json
+          matcher:
+            connstring: "host=db port=5432 user=clair password=clair dbname=clair sslmode=disable"
+            migrations: true
+            period: "2h"
+
+          notifier:
+            connstring: "host=db port=5432 user=clair password=clair dbname=clair sslmode=disable"
+            migrations: true
+            disable_summary: true
+          EOF
+
+          cat > clair/docker-compose.yaml <<'EOF'
+          version: "3.8"
+          services:
+            db:
+              image: postgres:15
+              environment:
+                POSTGRES_USER: clair
+                POSTGRES_PASSWORD: clair
+                POSTGRES_DB: clair
+              volumes:
+                - pgdata:/var/lib/postgresql/data
+              healthcheck:
+                test: ["CMD-SHELL", "pg_isready -U clair -d clair"]
+                interval: 5s
+                timeout: 3s
+                retries: 20
+
+            clair:
+              image: quay.io/projectquay/clair:4.7.0
+              depends_on:
+                db:
+                  condition: service_healthy
+              environment:
+                CLAIR_MODE: combo
+                CLAIR_CONF: /etc/clair/config.yaml
+              ports:
+                - "6060:6060"
+                - "6061:6061"
+              volumes:
+                - ./clair-config.yaml:/etc/clair/config.yaml:ro
+                - ./data:/data:ro
+          volumes:
+            pgdata:
+          EOF
+
+      - name: Start Clair services
+        working-directory: clair
+        run: |
+          docker compose up -d
+          echo "⏳ Waiting for Clair to start..."
           for i in {1..30}; do
-            if curl -s http://localhost:6060/ > /dev/null; then
-              echo "✅ Clair API is ready!"
-              exit 0
+            if curl -s http://localhost:6061/metrics > /dev/null; then
+              echo "✅ Clair is up"
+              break
             fi
-            echo "⏳ Waiting for Clair API... ($i/30)"
-            sleep 10
+            sleep 5
           done
-          echo "❌ Clair API did not start in time"
-          exit 1
 
-      - name: Scan image with Clair
+      - name: Install clairctl
         run: |
-          clairctl report \
-            --host http://localhost:6060 \
-            -o json ${{ github.event.inputs.image }} \
-            > clair-report.json
+          sudo apt-get install -y golang-go
+          go install github.com/quay/clair/v4/cmd/clairctl@latest
+          echo "${HOME}/go/bin" >> $GITHUB_PATH
 
-      - name: Upload report artifact
+      - name: Run Clair scan
+        run: |
+          clairctl report -o json --host http://localhost:6060 "${{ github.event.inputs.image }}" > report.json
+          clairctl report -o table --host http://localhost:6060 "${{ github.event.inputs.image }}"
+
+      - name: Upload Clair Report
         uses: actions/upload-artifact@v4
         with:
           name: clair-report
-          path: clair-report.json
+          path: report.json
