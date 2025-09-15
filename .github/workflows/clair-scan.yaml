@@ -158,6 +158,7 @@ jobs:
         run: |
           IMAGE_NAME=my-local-app:${{ github.sha }}
           docker build -t $IMAGE_NAME -f "${{ github.event.inputs.dockerfile_path }}" .
+          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_ENV
 
 
       # ✅ Set image name for scan
