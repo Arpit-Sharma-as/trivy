@@ -181,6 +181,12 @@ jobs:
           cat report_raw.json | jq '.' > report.json
           clairctl report -o table --host http://localhost:6060 "$IMAGE_NAME"
 
+      # Move report.json to clair-reports directory for DefectDojo upload
+      - name: Prepare report for DefectDojo
+        run: |
+          mkdir -p clair-reports
+          mv report.json clair-reports/report.json
+
       # ✅ Upload report artifact
       - name: Upload Clair Report
         uses: actions/upload-artifact@v4
@@ -191,16 +197,10 @@ jobs:
       # ✅ Upload Clair Report to DefectDojo
       - name: Upload Clair report to DefectDojo
         run: |
-          echo "Checking if report.json exists..."
-          ls -lh ${{ github.workspace }}/clair-reports/
-
-          echo "Uploading Clair scan to DefectDojo..."
-          curl -v -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-          -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-          -F "file=@${{ github.workspace }}/clair-reports/report.json;type=application/json" \
-          -F "scan_type=Clair Scan" \
-          -F "active=true" \
-          -F "verified=true" \
-          -F "auto_create_context=true" \
-          -F "product_name=MyProduct" \
-          -F "engagement_name=clair"
+          curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
+            -F "file=@clair-reports/report.json;type=application/json" \
+            -F "scan_type=Clair Scan" \
+            -F "engagement_name=clair" \
+            -F "product_name=MyProduct" \
+            -F "auto_create_context=true"
