@@ -47,7 +47,6 @@ jobs:
               exit 1
             fi
           fi
-
       # Checkout repo only if Dockerfile path is used
       - name: Checkout repository
         if: ${{ github.event.inputs.scan_type == 'dockerfile' }}
@@ -58,18 +57,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y docker-compose jq curl golang-go
-
       # ✅ Setup Clair
       - name: Setup Clair
         run: |
           mkdir -p clair/data
           curl -L -o clair/data/repository-to-cpe.json https://access.redhat.com/security/data/metrics/repository-to-cpe.json
-
           cat > clair/clair-config.yaml <<'EOF'
           http_listen_addr: "0.0.0.0:6060"
           introspection_addr: "0.0.0.0:6061"
           log_level: "info"
-
           indexer:
             connstring: "host=db port=5432 user=clair password=clair dbname=clair sslmode=disable"
             migrations: true
@@ -81,13 +77,11 @@ jobs:
             connstring: "host=db port=5432 user=clair password=clair dbname=clair sslmode=disable"
             migrations: true
             period: "2h"
-
           notifier:
             connstring: "host=db port=5432 user=clair password=clair dbname=clair sslmode=disable"
             migrations: true
             disable_summary: true
           EOF
-
           cat > clair/docker-compose.yaml <<'EOF'
           version: "3.8"
           services:
@@ -104,7 +98,6 @@ jobs:
                 interval: 5s
                 timeout: 3s
                 retries: 20
-
             clair:
               image: quay.io/projectquay/clair:4.7.0
               depends_on:
@@ -122,7 +115,6 @@ jobs:
           volumes:
             pgdata:
           EOF
-
       # ✅ Start Clair
       - name: Start Clair services
         working-directory: clair
@@ -136,14 +128,11 @@ jobs:
             fi
             sleep 5
           done
-
       # ✅ Install clairctl
       - name: Install clairctl
         run: |
           go install github.com/quay/clair/v4/cmd/clairctl@latest
           echo "${HOME}/go/bin" >> $GITHUB_PATH
-
-
       # 🔑 Login to DockerHub (only for remote image scan, optional if private)
       - name: DockerHub Login
         if: ${{ github.event.inputs.scan_type == 'image' }}
@@ -165,28 +154,18 @@ jobs:
           echo ${{ secrets.DOCKERHUB_TOKEN }} | docker login -u ${{ secrets.DOCKERHUB_USERNAME }} --password-stdin
           docker push $DOCKERHUB_IMAGE
           echo "IMAGE_NAME=$DOCKERHUB_IMAGE" >> $GITHUB_ENV
-
-
       # ✅ Set image name for scan
       - name: Set Image for Scan
         run: |
           if [[ "${{ github.event.inputs.scan_type }}" == "image" ]]; then
             echo "IMAGE_NAME=${{ github.event.inputs.image_url }}" >> $GITHUB_ENV
           fi
-
       # ✅ Run Clair scan
       - name: Run Clair Scan
         run: |
           clairctl report -o json --host http://localhost:6060 "$IMAGE_NAME" > report_raw.json
           cat report_raw.json | jq '.' > report.json
           clairctl report -o table --host http://localhost:6060 "$IMAGE_NAME"
-
-      # Move report.json to clair-reports directory for DefectDojo upload
-      - name: Prepare report for DefectDojo
-        run: |
-          mkdir -p clair-reports
-          mv report.json clair-reports/report.json
-
       # ✅ Upload report artifact
       - name: Upload Clair Report
         uses: actions/upload-artifact@v4
@@ -199,7 +178,7 @@ jobs:
         run: |
           curl -X POST "${{ secrets.DEFECTDOJO_URL }}/api/v2/import-scan/" \
             -H "Authorization: Token ${{ secrets.DEFECTDOJO_TOKEN }}" \
-            -F "file=@clair-reports/report.json;type=application/json" \
+            -F "file=@report.json;type=application/json" \
             -F "scan_type=Clair Scan" \
             -F "engagement_name=clair" \
             -F "product_name=MyProduct" \
